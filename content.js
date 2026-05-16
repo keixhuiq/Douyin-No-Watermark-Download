@@ -1,5 +1,4 @@
-// content.js v4.1 - 抖音无水印下载
-// 主要改进：
+// content.js - 抖音无水印下载
 //   1. 悬浮按钮可拖动 + 位置持久化 + 可由 popup 隐藏
 //   2. 用 fetch + blob + <a download> 触发下载，Save As 弹框能记住上次位置
 //   3. 画质 URL 失效时按 bitRate 顺序自动降级
@@ -283,8 +282,8 @@
 
     // ===== 触发浏览器原生下载 =====
     // 用 fetch → blob → <a download> 的方式触发，让浏览器把这当作"用户主动下载"
-    // 优点：Save As 弹框会记住上次的保存位置（chrome.downloads.download 不会）
-    // 代价：整个文件先读到内存里再保存。抖音视频通常 5-50MB，可接受。
+    // 优点：Save As 弹框会记住上次的保存位置
+    // 缺点：整个文件先读到内存里再保存。抖音视频通常 5-50MB，可以接受。
     function triggerBrowserDownload(blob, filename) {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
