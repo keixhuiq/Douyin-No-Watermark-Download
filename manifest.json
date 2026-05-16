@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "抖音无水印下载",
-  "version": "4.1.0",
+  "version": "1.0.0",
   "description": "在抖音网页版下载无水印视频/图文/视频集。点击悬浮按钮或按 Shift+D 下载。可在弹窗设置中自定义。",
   "permissions": [
     "storage",
