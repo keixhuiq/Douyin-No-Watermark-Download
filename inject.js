@@ -1,4 +1,4 @@
-// inject.js v4.1 - MAIN world
+// inject.js - MAIN world
 // 改进：
 //   1. 精确匹配 :origin tplv 模板（避免误中含 "origin" 子串的 URL）
 //   2. 同时 hook JSON.parse 和 Response.prototype.json（覆盖 fetch 路径）
@@ -77,7 +77,7 @@
         const urlList = img.url_list || [];
         const dlList = img.download_url_list || [];
 
-        // 1) 优先找带 :origin 的 tplv 模板（明确的无水印原图）
+        // 1) 优先找带 :origin 的 tplv 模板：明确的无水印原图
         for (const u of urlList) {
             if (u && RE_TPLV_ORIGIN.test(u) && !RE_WATERMARK.test(u)) return u;
         }
