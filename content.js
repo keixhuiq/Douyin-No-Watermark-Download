@@ -616,7 +616,7 @@
     async function init() {
         await loadConfig();
         createFloatButton();
-        log('v4.1.0 已加载 | 配置:', CFG);
+        log('v1.0.0 已加载 | 配置:', CFG);
     }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') {

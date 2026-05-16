@@ -264,5 +264,5 @@
         setTimeout(scanRenderData, 100);
     }
 
-    console.log('[DY-DL] inject.js v4.1 loaded');
+    console.log('[DY-DL] inject.js v1.0.0 loaded');
 })();
