@@ -1,4 +1,4 @@
-// background.js v4.1
+// background.js
 // 职责：
 //   1) 维护 Referer 规则（让抖音 CDN 域名的请求带正确的 Referer）
 //   2) 解析 CDN 重定向（fetch 跟随 302，把短 URL 换成最终 URL）
