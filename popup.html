@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>抖音无水印下载</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <header class="hdr">
+        <div class="brand">
+            <span class="logo">⬇</span>
+            <div>
+                <h1>抖音无水印下载</h1>
+                <p class="ver" id="ver">v—</p>
+            </div>
+        </div>
+        <div class="status" id="status" title="后台连接状态">
+            <span class="dot"></span><span class="status-text">连接中…</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- 悬浮按钮 -->
+        <section class="card">
+            <div class="row">
+                <div class="row-text">
+                    <h2>显示悬浮按钮</h2>
+                    <p>关闭后页面右下角不再显示按钮，仍可用 Shift+D</p>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="showFloatBtn">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="row sub" id="resetPosRow">
+                <div class="row-text">
+                    <h2>悬浮按钮位置</h2>
+                    <p id="posInfo">直接在页面上拖动按钮即可调整</p>
+                </div>
+                <button class="btn-ghost" id="resetPos">重置</button>
+            </div>
+        </section>
+
+        <!-- 画质 -->
+        <section class="card">
+            <div class="row">
+                <div class="row-text">
+                    <h2>视频画质</h2>
+                    <p>「最高」失败时会自动降级到较低画质</p>
+                </div>
+                <select id="quality" class="select">
+                    <option value="best">最高画质</option>
+                    <option value="second">次高画质</option>
+                    <option value="lowest">最低画质</option>
+                </select>
+            </div>
+        </section>
+
+        <!-- 文件名 -->
+        <section class="card">
+            <div class="row col">
+                <div class="row-text">
+                    <h2>文件名模板</h2>
+                    <p>可用变量：<code>{title}</code> <code>{author}</code> <code>{id}</code> <code>{date}</code></p>
+                </div>
+                <input type="text" id="filenameTpl" class="input" placeholder="{title}@{author}">
+                <div class="presets">
+                    <button class="chip" data-tpl="{title}@{author}">{title}@{author}</button>
+                    <button class="chip" data-tpl="{date}_{title}">{date}_{title}</button>
+                    <button class="chip" data-tpl="{author}_{title}">{author}_{title}</button>
+                    <button class="chip" data-tpl="{id}_{title}">{id}_{title}</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 保存位置说明 -->
+        <section class="card info">
+            <div class="row">
+                <div class="row-text">
+                    <h2>保存位置</h2>
+                    <p>下载时会弹出系统保存框（Chrome 行为，与设置「下载前询问每个文件保存位置」一致），并自动记住上次的保存位置。如想直接保存不询问，可在 <a href="#" id="chromeDlSettings">Chrome 下载设置</a> 关闭「每次询问」。</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 调试 -->
+        <section class="card">
+            <div class="row">
+                <div class="row-text">
+                    <h2>调试日志</h2>
+                    <p>在浏览器 Console 输出详细日志</p>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="debug">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </section>
+
+        <div class="tips">
+            <p><kbd>Shift</kbd> + <kbd>D</kbd> &nbsp;快捷下载当前作品</p>
+            <p><a href="chrome://extensions/shortcuts" id="shortcutLink">配置全局快捷键</a> · <a href="#" id="resetAll">恢复全部默认设置</a></p>
+        </div>
+    </main>
+
+    <script src="popup.js"></script>
+</body>
+</html>
