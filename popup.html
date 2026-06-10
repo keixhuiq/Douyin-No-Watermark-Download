@@ -8,7 +8,7 @@
 <body>
     <header class="hdr">
         <div class="brand">
-            <span class="logo">⬇</span>
+            <img class="logo" src="icon48.png" alt="">
             <div>
                 <h1>抖音无水印下载</h1>
                 <p class="ver" id="ver">v—</p>
@@ -20,25 +20,22 @@
     </header>
 
     <main>
-        <!-- 悬浮按钮 -->
-        <section class="card">
-            <div class="row">
-                <div class="row-text">
-                    <h2>显示悬浮按钮</h2>
-                    <p>关闭后页面右下角不再显示按钮，仍可用 Shift+D</p>
+        <!-- 下载入口 -->
+        <section class="card dl-card">
+            <div class="post-preview" id="postPreview">
+                <p class="pp-state" id="ppState">正在检测当前作品…</p>
+            <div class="pp-body" id="ppBody" hidden>
+                    <div class="pp-line">
+                        <span class="pp-badge" id="ppType">视频</span>
+                        <span class="pp-title" id="ppTitle"></span>
+                    </div>
+                    <p class="pp-meta" id="ppMeta"></p>
                 </div>
-                <label class="switch">
-                    <input type="checkbox" id="showFloatBtn">
-                    <span class="slider"></span>
-                </label>
             </div>
-            <div class="row sub" id="resetPosRow">
-                <div class="row-text">
-                    <h2>悬浮按钮位置</h2>
-                    <p id="posInfo">直接在页面上拖动按钮即可调整</p>
-                </div>
-                <button class="btn-ghost" id="resetPos">重置</button>
-            </div>
+            <button class="btn-primary" id="btnDownload" disabled>
+                <span class="btn-icon">⬇</span>下载当前作品
+            </button>
+            <p class="dl-hint">快捷键：页内 <kbd>Shift</kbd>+<kbd>D</kbd>，全局 <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>（<a href="#" id="shortcutLink">可自定义</a>）</p>
         </section>
 
         <!-- 画质 -->
@@ -73,16 +70,6 @@
             </div>
         </section>
 
-        <!-- 保存位置说明 -->
-        <section class="card info">
-            <div class="row">
-                <div class="row-text">
-                    <h2>保存位置</h2>
-                    <p>下载时会弹出系统保存框（Chrome 行为，与设置「下载前询问每个文件保存位置」一致），并自动记住上次的保存位置。如想直接保存不询问，可在 <a href="#" id="chromeDlSettings">Chrome 下载设置</a> 关闭「每次询问」。</p>
-                </div>
-            </div>
-        </section>
-
         <!-- 调试 -->
         <section class="card">
             <div class="row">
@@ -97,9 +84,25 @@
             </div>
         </section>
 
+        <!-- 使用说明 -->
+        <section class="card">
+            <details class="help">
+                <summary>使用说明</summary>
+                <div class="help-body">
+                    <h3>支持的内容类型</h3>
+                    <p>单视频、图文（多图）、视频集（图文里内嵌视频）都支持，混合作品会把视频和图片全部下载并按序号命名。</p>
+                    <h3>多文件下载提示</h3>
+                    <p>下载图文/视频集时，浏览器首次会弹「允许下载多个文件」提示，需点允许，否则第二个文件起会被静默拦截。误点了阻止可在地址栏左侧锁图标里重置。</p>
+                    <h3>保存位置</h3>
+                    <p>下载时会弹系统保存框并记住上次位置。如想直接保存不询问，可在 <a href="#" id="chromeDlSettings">Chrome 下载设置</a> 关闭「下载前询问每个文件的保存位置」。</p>
+                    <h3>检测不到作品？</h3>
+                    <p>作品数据在页面加载/滑动时被捕获。如提示未检测到，等视频开始播放后重试，或刷新页面。</p>
+                </div>
+            </details>
+        </section>
+
         <div class="tips">
-            <p><kbd>Shift</kbd> + <kbd>D</kbd> &nbsp;快捷下载当前作品</p>
-            <p><a href="chrome://extensions/shortcuts" id="shortcutLink">配置全局快捷键</a> · <a href="#" id="resetAll">恢复全部默认设置</a></p>
+            <p><a href="#" id="resetAll">恢复全部默认设置</a></p>
         </div>
     </main>
 

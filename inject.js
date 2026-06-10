@@ -234,7 +234,7 @@
 
     // 查询接口
     window.addEventListener('message', function (e) {
-        if (!e.data) return;
+        if (e.source !== window || !e.data) return;
         if (e.data.type === '__DY_DL_QUERY__') {
             const tid = e.data.awemeId || '';
             let result = null;
@@ -264,5 +264,5 @@
         setTimeout(scanRenderData, 100);
     }
 
-    console.log('[DY-DL] inject.js v1.0.0 loaded');
+    console.log('[DY-DL] inject.js v1.1.0 loaded');
 })();

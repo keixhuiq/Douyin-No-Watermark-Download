@@ -60,14 +60,40 @@ function makeRule(id, urlFilter) {
         },
         condition: {
             urlFilter,
-            resourceTypes: ['xmlhttprequest', 'media', 'other', 'main_frame', 'sub_frame', 'image']
+            // 关键：DNR 动态规则是全浏览器生效的。原版没有 initiatorDomains，
+            // 意味着用户正常访问飞书（feishucdn）、西瓜等 ByteDance 系站点时
+            // Referer 也会被改写成抖音——既影响兼容性也是隐私瑕疵。
+            // 现在限定为：
+            //   1) douyin.com 页面发起的请求（content script 的 fetch）
+            //   2) 扩展自身（service worker 的 resolveUrl/fetchBlob，
+            //      initiator 是 chrome-extension://<id>；Referer 是 fetch
+            //      禁设头，SW 里手动设置无效，全靠这条规则生效）
+            initiatorDomains: [chrome.runtime.id, 'douyin.com'],
+            // 不含 main_frame/sub_frame：下载只涉及 XHR/媒体/图片
+            resourceTypes: ['xmlhttprequest', 'media', 'image', 'other']
         }
     };
 }
 
+// ===== 全局快捷键（chrome://extensions/shortcuts 可自定义，默认 Alt+Shift+D） =====
+// 注意默认值刻意与 TikTok 版（Alt+D）错开，两个扩展同时安装时不冲突
+chrome.commands.onCommand.addListener(async (command) => {
+    if (command !== 'download-current') return;
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id && /^https?:\/\/([^/]*\.)?douyin\.com\//.test(tab.url || '')) {
+            chrome.tabs.sendMessage(tab.id, { action: 'trigger_download' }).catch(() => { });
+        }
+    } catch (e) { /* ignore */ }
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === 'resolve_url') {
         ensureRules().finally(() => resolveUrl(msg.url, sendResponse));
+        return true;
+    }
+    if (msg.action === 'fetch_blob') {
+        ensureRules().finally(() => fetchBlob(msg.url, msg.credentials, sendResponse));
         return true;
     }
     if (msg.action === 'ping') {
@@ -75,6 +101,53 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return false;
     }
 });
+
+// ===== 跨域 fetch 兜底（从 TikTok 版回灌） =====
+// 抖音 CDN 偶发不返回 CORS 头，content script 直接 fetch 会被浏览器拦截。
+// service worker 的 fetch 不受页面 CORS 限制，由这里代取。
+// 注意：sendMessage 结构化克隆有大小上限（实测约 64MB），
+// 此路径仅作为兜底，主路径仍是 content.js 直接 fetch。
+async function fetchBlob(url, credentials, sendResponse) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60000);
+
+    try {
+        const res = await fetch(url, {
+            headers: { 'Referer': 'https://www.douyin.com/', 'Accept': '*/*' },
+            redirect: 'follow',
+            credentials: credentials || 'omit',
+            cache: 'no-store',
+            signal: ctrl.signal,
+        });
+        if (!res.ok) {
+            sendResponse({ ok: false, error: `HTTP ${res.status}` });
+            return;
+        }
+        const ct = res.headers.get('Content-Type') || '';
+        if (ct.includes('text/html')) {
+            sendResponse({ ok: false, error: `非媒体响应 (${ct})` });
+            return;
+        }
+        const buffer = await res.arrayBuffer();
+        if (buffer.byteLength < 100) {
+            sendResponse({ ok: false, error: `文件过小 (${buffer.byteLength}B)` });
+            return;
+        }
+        sendResponse({
+            ok: true,
+            buffer,
+            contentType: ct,
+            size: buffer.byteLength,
+        });
+    } catch (err) {
+        sendResponse({
+            ok: false,
+            error: err.name === 'AbortError' ? '获取超时' : err.message,
+        });
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
 // ===== 解析 CDN 重定向 =====
 // 抖音返回的 play URL 通常是短链，会 302 重定向到真实 CDN 地址。

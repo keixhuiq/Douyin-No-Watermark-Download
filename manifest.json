@@ -1,11 +1,10 @@
 {
   "manifest_version": 3,
   "name": "抖音无水印下载",
-  "version": "1.0.0",
-  "description": "在抖音网页版下载无水印视频/图文/视频集。点击悬浮按钮或按 Shift+D 下载。可在弹窗设置中自定义。",
+  "version": "1.1.0",
+  "description": "在抖音网页版下载无水印视频/图文/视频集。点击扩展图标或按快捷键下载。",
   "permissions": [
     "storage",
-    "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
@@ -38,15 +37,27 @@
   "background": {
     "service_worker": "background.js"
   },
+  "commands": {
+    "download-current": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "下载当前作品（无水印）"
+    }
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "抖音无水印下载",
     "default_icon": {
+      "16": "icon16.png",
+      "32": "icon32.png",
       "48": "icon48.png",
       "128": "icon128.png"
     }
   },
   "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
     "48": "icon48.png",
     "128": "icon128.png"
   }

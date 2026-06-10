@@ -1,18 +1,25 @@
-// content.js - 抖音无水印下载
-//   1. 悬浮按钮可拖动 + 位置持久化 + 可由 popup 隐藏
-//   2. 用 fetch + blob + <a download> 触发下载，Save As 弹框能记住上次位置
-//   3. 画质 URL 失效时按 bitRate 顺序自动降级
-//   4. 图片/视频统一走 background.js 解析 CDN 重定向
-//   5. 文件名 sanitize 修正 emoji 截断、Windows 保留名
-//   6. resolveUrl + sendMessage 都加超时
-//   7. 实时下载进度提示
+// content.js v1.1.0 - 抖音无水印下载
+//
+// v1.1.0 变更：
+//   1. 移除页面悬浮按钮，下载入口改为扩展弹窗 UI + 快捷键
+//      （页内 Shift+D 保留；新增 commands 全局快捷键，默认 Alt+Shift+D
+//       —— 与 TikTok 版的 Alt+D 错开，避免同装时冲突）
+//   2. blob URL 延迟 5 分钟再 revoke（30 秒太短，Save As 弹框停留超时会丢下载）
+//   3. 从 TikTok 版回灌：图片多 URL 回退、background fetch_blob CORS 兜底、
+//      按文件类型的 blob 大小校验
+//
+// 原有特性：
+//   1. fetch + blob + <a download> 触发下载，Save As 弹框能记住上次位置
+//   2. 画质 URL 失效时按 bitRate 顺序自动降级
+//   3. 图片/视频统一走 background.js 解析 CDN 重定向
+//   4. 文件名 sanitize 修正 emoji 截断、Windows 保留名
+//   5. resolveUrl + sendMessage 都加超时
+//   6. 实时下载进度提示
 (function () {
     'use strict';
 
     // ===== 默认配置（与 popup.html 中的字段一致） =====
     const DEFAULTS = Object.freeze({
-        showFloatBtn: true,
-        floatPos: { right: 24, bottom: 80 },   // 距右下角的偏移
         filenameTpl: '{title}@{author}',        // {title} {author} {id} {date}
         quality: 'best',                         // best | second | lowest
         debug: false,
@@ -34,7 +41,6 @@
         for (const k of Object.keys(changes)) {
             if (k in CFG) CFG[k] = changes[k].newValue ?? DEFAULTS[k];
         }
-        applyButtonVisibility();
     });
 
     function log(...args) { if (CFG.debug) console.log('[DY-DL]', ...args); }
@@ -291,18 +297,21 @@
         a.style.display = 'none';
         document.body.appendChild(a);
         a.click();
+        // 给用户在 Save As 弹框里挑目录留足时间，过早 revoke 会让下载失败
         setTimeout(() => {
             a.remove();
             URL.revokeObjectURL(a.href);
-        }, 30000);
+        }, 5 * 60 * 1000);
     }
 
     // 带进度的 fetch 下载
     // onProgress(loaded, total) 可能多次调用；total 为 0 时表示未知
-    async function fetchWithProgress(url, onProgress) {
+    // opts.credentials: 默认 'omit'（抖音 CDN 不需要 cookie，且 omit 可避免
+    // ACAO: * 与 credentials 的 CORS 冲突）
+    async function fetchWithProgress(url, onProgress, opts = {}) {
         const ctrl = new AbortController();
         const res = await fetch(url, {
-            credentials: 'omit',
+            credentials: opts.credentials || 'omit',
             signal: ctrl.signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -339,10 +348,26 @@
         return { blob, total: loaded, contentType: ct };
     }
 
-    // 下载一个资源（图片/视频通用），label 用于 toast 提示
-    async function downloadOne(cdnUrl, filename, label) {
+    // 通过 background service worker fetch（绕过 CORS，从 TikTok 版回灌）
+    // 抖音 CDN 偶发不返回 CORS 头，content script 直接 fetch 会被拦截
+    async function bgFetchBlob(url, opts = {}) {
+        const res = await sendMessage({
+            action: 'fetch_blob',
+            url,
+            credentials: opts.credentials || 'omit',
+        }, 70000);
+        if (!res?.ok) throw new Error(res?.error || 'background fetch failed');
+        return {
+            blob: new Blob([res.buffer], { type: res.contentType || 'application/octet-stream' }),
+            total: res.size,
+            contentType: res.contentType,
+        };
+    }
+
+    // 只 fetch 拿 blob，不触发保存。直接 fetch 疑似被 CORS 拦截时走 background 兜底。
+    async function fetchOne(cdnUrl, label, opts = {}) {
         try {
-            const { blob } = await fetchWithProgress(cdnUrl, (loaded, total) => {
+            return await fetchWithProgress(cdnUrl, (loaded, total) => {
                 const mb = (loaded / 1048576).toFixed(1);
                 if (total > 0) {
                     const pct = Math.round((loaded / total) * 100);
@@ -351,18 +376,45 @@
                 } else {
                     showToast(`⏬ ${label} ${mb}MB`, 2000);
                 }
-            });
-            if (blob.size < 100) {
-                warn(`${label}: 文件太小 (${blob.size}B)，疑似失败`);
-                return false;
-            }
-            triggerBrowserDownload(blob, filename);
-            log(`✅ ${filename} ${(blob.size / 1048576).toFixed(1)}MB`);
-            return true;
+            }, opts);
         } catch (err) {
-            warn(`${label} 下载失败:`, err.message);
+            const msg = err?.message || '';
+            const isCorsLikely = msg.includes('Failed to fetch') || msg.includes('CORS') || msg.includes('NetworkError');
+            if (!isCorsLikely) {
+                warn(`${label} 下载失败:`, msg);
+                return null;
+            }
+            log(`${label}: 直接 fetch 被拦截（疑似 CORS），改走 background...`);
+            showToast(`⏬ ${label} 切换通道重试...`, 2000);
+            try {
+                return await bgFetchBlob(cdnUrl, opts);
+            } catch (err2) {
+                warn(`${label} background 兜底也失败:`, err2.message);
+                return null;
+            }
+        }
+    }
+
+    // 按文件类型设置最小合法大小（从 TikTok 版回灌）：
+    // 统一 100B 的旧阈值会把 CDN 返回的错误页当成"下载成功的视频"
+    function validateBlobSize(blob, filename, label) {
+        const isVideo = filename.endsWith('.mp4');
+        const minSize = isVideo ? 10000 : 1000;
+        if (blob.size < minSize) {
+            warn(`${label}: 文件太小 (${blob.size}B)，疑似失败`);
             return false;
         }
+        return true;
+    }
+
+    // 下载一个资源（图片/视频通用），label 用于 toast 提示
+    async function downloadOne(cdnUrl, filename, label, opts = {}) {
+        const result = await fetchOne(cdnUrl, label, opts);
+        if (!result) return false;
+        if (!validateBlobSize(result.blob, filename, label)) return false;
+        triggerBrowserDownload(result.blob, filename);
+        log(`✅ ${filename} ${(result.blob.size / 1048576).toFixed(1)}MB`);
+        return true;
     }
 
     // ===== 文件名生成 =====
@@ -474,7 +526,8 @@
 
             const ext = guessImageExt(url);
             const filename = `${prefix}_${String(idx).padStart(2, '0')}${ext}`;
-            const success = await downloadImage(url, filename, `图片 ${idx}/${total}`);
+            const allUrls = (img.allUrls || []).map(toFullUrl).filter(Boolean);
+            const success = await downloadImage(url, allUrls, filename, `图片 ${idx}/${total}`);
             if (success) ok++;
             if (i < images.length - 1) await sleep(300);
         }
@@ -493,7 +546,8 @@
 
             const ext = guessImageExt(url);
             const filename = `${prefix}_${String(i + 1).padStart(2, '0')}${ext}`;
-            const success = await downloadImage(url, filename, `图片 ${i + 1}/${images.length}`);
+            const allUrls = (img.allUrls || []).map(toFullUrl).filter(Boolean);
+            const success = await downloadImage(url, allUrls, filename, `图片 ${i + 1}/${images.length}`);
             if (success) ok++;
             if (i < images.length - 1) await sleep(300);
         }
@@ -501,139 +555,85 @@
         showToast(ok > 0 ? `✅ 完成: ${ok}/${images.length} 张图片` : '❌ 图片下载失败');
     }
 
-    // 图片：先 resolveUrl 拿到最终 CDN URL（处理重定向），然后通过 fetch+blob 下载
-    async function downloadImage(url, filename, label) {
-        const res = await resolveUrl(url);
-        const finalUrl = (res?.ok && res.cdnUrl) ? res.cdnUrl : url;
-        return downloadOne(finalUrl, filename, label);
-    }
-
-    // ===== 悬浮按钮（可拖动） =====
-
-    function clampPos(pos) {
-        const minX = 8, minY = 8;
-        const maxX = Math.max(minX, innerWidth - 58);
-        const maxY = Math.max(minY, innerHeight - 58);
-        return {
-            right: Math.min(Math.max(pos.right ?? 24, minX), maxX),
-            bottom: Math.min(Math.max(pos.bottom ?? 80, minY), maxY),
-        };
-    }
-
-    function applyButtonPos(wrap) {
-        const p = clampPos(CFG.floatPos || DEFAULTS.floatPos);
-        wrap.style.right = p.right + 'px';
-        wrap.style.bottom = p.bottom + 'px';
-    }
-
-    function applyButtonVisibility() {
-        const wrap = document.getElementById('dy-dl-float');
-        if (!wrap) return;
-        wrap.style.display = CFG.showFloatBtn ? '' : 'none';
-        applyButtonPos(wrap);
-    }
-
-    function createFloatButton() {
-        if (document.getElementById('dy-dl-float')) return;
-        const wrap = document.createElement('div');
-        wrap.className = 'dy-dl-float';
-        wrap.id = 'dy-dl-float';
-
-        const btn = document.createElement('button');
-        btn.className = 'dy-dl-float-btn';
-        btn.innerHTML = '⬇';
-        btn.title = '下载当前作品（无水印）\n拖动可移动位置\n快捷键: Shift+D';
-
-        wrap.appendChild(btn);
-        document.body.appendChild(wrap);
-        applyButtonPos(wrap);
-        applyButtonVisibility();
-
-        // 拖动逻辑：按下后 5px 阈值才算拖动，否则当点击处理
-        let down = null;
-        let dragging = false;
-
-        function onDown(e) {
-            const pt = e.touches ? e.touches[0] : e;
-            down = { x: pt.clientX, y: pt.clientY, r: parseFloat(wrap.style.right) || 24, b: parseFloat(wrap.style.bottom) || 80 };
-            dragging = false;
-            window.addEventListener('mousemove', onMove);
-            window.addEventListener('mouseup', onUp);
-            window.addEventListener('touchmove', onMove, { passive: false });
-            window.addEventListener('touchend', onUp);
+    // 图片下载：依次尝试主 URL + 所有备选 URL（url_list/download_url_list 里
+    // 通常有多个 CDN 副本，从 TikTok 版回灌的多 URL 回退）
+    // 每个候选先 resolveUrl 处理重定向，再 fetch+blob 下载
+    async function downloadImage(primaryUrl, allUrls, filename, label) {
+        const candidates = [primaryUrl];
+        for (const u of (allUrls || [])) {
+            if (u && !candidates.includes(u)) candidates.push(u);
         }
-        function onMove(e) {
-            if (!down) return;
-            const pt = e.touches ? e.touches[0] : e;
-            const dx = pt.clientX - down.x;
-            const dy = pt.clientY - down.y;
-            if (!dragging && Math.hypot(dx, dy) < 5) return;
-            dragging = true;
-            if (e.cancelable) e.preventDefault();
-            const np = clampPos({ right: down.r - dx, bottom: down.b - dy });
-            wrap.style.right = np.right + 'px';
-            wrap.style.bottom = np.bottom + 'px';
+        for (const url of candidates) {
+            const res = await resolveUrl(url);
+            const finalUrl = (res?.ok && res.cdnUrl) ? res.cdnUrl : url;
+            const ok = await downloadOne(finalUrl, filename, label);
+            if (ok) return true;
         }
-        function onUp() {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-            window.removeEventListener('touchmove', onMove);
-            window.removeEventListener('touchend', onUp);
-            if (dragging) {
-                const pos = {
-                    right: parseFloat(wrap.style.right) || 24,
-                    bottom: parseFloat(wrap.style.bottom) || 80,
-                };
-                CFG.floatPos = pos;
-                chrome.storage.sync.set({ floatPos: pos });
-            }
-            // 短延迟，避免拖动结束时的 click 误触
-            setTimeout(() => { dragging = false; }, 50);
-            down = null;
-        }
-
-        btn.addEventListener('mousedown', onDown);
-        btn.addEventListener('touchstart', onDown, { passive: true });
-
-        btn.addEventListener('click', (e) => {
-            if (dragging) { e.preventDefault(); e.stopPropagation(); return; }
-            btn.classList.add('loading');
-            triggerDownload()
-                .catch(err => { warn('异常:', err); showToast('❌ ' + err.message); })
-                .finally(() => setTimeout(() => btn.classList.remove('loading'), 2000));
-        });
+        return false;
     }
+
+    // ===== 下载入口：弹窗 UI / 全局快捷键 / 页内快捷键 =====
+    // v1.1.0 起不再有页面悬浮按钮，触发路径：
+    //   1) popup「下载当前作品」按钮 → trigger_download 消息
+    //   2) commands 全局快捷键（默认 Alt+Shift+D，chrome://extensions/shortcuts 可改）
+    //      → background → trigger_download 消息
+    //   3) 页内 Shift+D（仅页面聚焦时有效）
+
+    let downloading = false;
+
+    function safeTriggerDownload() {
+        if (downloading) { showToast('⏳ 正在下载中…'); return; }
+        downloading = true;
+        triggerDownload()
+            .catch(err => { warn('异常:', err); showToast('❌ ' + err.message); })
+            .finally(() => { downloading = false; });
+    }
+
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (msg?.action === 'trigger_download') {
+            safeTriggerDownload();
+            sendResponse({ ok: true });
+            return false;
+        }
+        // popup 打开时查询当前作品信息，用于预览
+        if (msg?.action === 'get_post_info') {
+            getCurrentData().then(data => {
+                if (!data) { sendResponse({ ok: false }); return; }
+                sendResponse({
+                    ok: true,
+                    info: {
+                        awemeId: data.awemeId,
+                        type: data.type,
+                        subType: data.subType || null,
+                        desc: data.desc || '',
+                        author: data.author || '',
+                        imageCount: data.images?.length || 0,
+                        clipCount: data.clipVideos?.length || 0,
+                        qualityCount: data.bitRateList?.length || 0,
+                    },
+                });
+            }).catch(() => sendResponse({ ok: false }));
+            return true;   // 异步 sendResponse
+        }
+    });
 
     document.addEventListener('keydown', (e) => {
         if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
             const t = document.activeElement?.tagName?.toLowerCase();
             if (t === 'input' || t === 'textarea' || document.activeElement?.contentEditable === 'true') return;
             e.preventDefault();
-            triggerDownload();
+            safeTriggerDownload();
         }
     });
 
     async function init() {
         await loadConfig();
-        createFloatButton();
-        log('v1.0.0 已加载 | 配置:', CFG);
+        log('v1.1.0 已加载 | 配置:', CFG);
     }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        setTimeout(init, 500);
+        init();
     } else {
-        window.addEventListener('DOMContentLoaded', () => setTimeout(init, 500));
+        window.addEventListener('DOMContentLoaded', init);
     }
-
-    // SPA 路由切换时，按钮可能被抖音清空，需要补回
-    let lastUrl = location.href;
-    new MutationObserver(() => {
-        if (location.href !== lastUrl) {
-            lastUrl = location.href;
-            setTimeout(() => {
-                createFloatButton();
-                applyButtonVisibility();
-            }, 500);
-        }
-    }).observe(document.body, { childList: true, subtree: true });
 })();
