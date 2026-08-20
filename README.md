@@ -4,7 +4,7 @@
 
 > 本目录是可直接加载的扩展目录，无需构建、打包或安装依赖。
 
-姊妹扩展：[TikTok No-Watermark Downloader](../TikTok%20No-Watermark%20Downloader)
+姊妹扩展：[TikTok No-Watermark Downloader](https://github.com/Keixhuiq/TikTok-No-Watermark-Downloader)
 
 ## 功能
 
